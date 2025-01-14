@@ -2,6 +2,7 @@ import argparse
 from io import BufferedRandom
 import subprocess
 import sys
+import json
 import tempfile
 
 REGISTRY_PORT = 61978
@@ -42,17 +43,33 @@ def build_image(crane_path, base_image_path, tar_files, entrypoint, cmd, output,
     eprint(f"Appending layers: {append_layer_command}")
     subprocess.run(append_layer_command, check=True)
 
+    # crane has a bug where it deletes Cmd if you only override entrypoint.
+    # so get the config of the base image and use it as the default
+    # https://github.com/google/go-containerregistry/issues/2041
+    base_config_command = [crane_path, "config", registry_base_image]
+    eprint(f"Getting base config: {base_config_command}")
+    base_config = json.loads(subprocess.run(base_config_command, check=True, stdout=subprocess.PIPE).stdout.decode("utf-8"))["config"]
+    base_cmd = base_config.get("Cmd")
+    base_entrypoint = base_config.get("Entrypoint")
+    if base_cmd is not None:
+        base_cmd = ",".join(base_cmd)
+    if base_entrypoint is not None:
+        base_entrypoint = ",".join(base_entrypoint)
+    cmd = cmd or base_cmd
+    entrypoint = entrypoint or base_entrypoint
+
+
     args = []
-    if envs:
+    if envs is not None:
         for env in envs:
             args.append(f"--env={env}")
-    if entrypoint:
+    if entrypoint is not None:
         args.append(f"--entrypoint={entrypoint}")
-    if cmd:
+    if cmd is not None:
         args.append(f"--cmd={cmd}")
-    if user:
+    if user is not None:
         args.append(f"--user={user}")
-    if workdir:
+    if workdir is not None:
         args.append(f"--workdir={workdir}")
 
     # Use the mutate command to output the image without doing any mutation
