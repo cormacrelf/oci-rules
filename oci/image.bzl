@@ -35,7 +35,7 @@ def _oci_image_impl(ctx: AnalysisContext) -> list[Provider]:
     if user:
       command.add(["--user", workdir])
     if cmd:
-      command.add(["--cmd", " ".join(cmd)])
+      command.add(["--cmd", ",".join(cmd)])
     for k, v in ctx.attrs.env.items():
       command.add(["--env", "{}={}".format(k, v)])
     command.add([ "--name", image_name])

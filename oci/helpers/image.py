@@ -72,8 +72,8 @@ if __name__ == "__main__":
     parser.add_argument("--base", required=True, help="Base OCI image")
     parser.add_argument("--tars", nargs='+', required=True, help="Paths to tar files representing layers")
     parser.add_argument("--env", action="append", required=False, help="Environment variables")
-    parser.add_argument("--entrypoint", nargs='+', help="Entrypoint for the OCI image")
-    parser.add_argument("--cmd", nargs='+', help="Command for the OCI image")
+    parser.add_argument("--entrypoint", help="Entrypoint for the OCI image")
+    parser.add_argument("--cmd", help="Command for the OCI image")
     parser.add_argument("--output", required=True, help="Path to the output OCI image directory")
     parser.add_argument("--name", required=True, help="Name of the OCI image")
     parser.add_argument("--user", help="User")
@@ -85,7 +85,7 @@ if __name__ == "__main__":
 
     try:
         registry_process = start_registry(args.crane, log_file)
-        build_image(args.crane, args.base, args.tars, ' '.join(args.entrypoint) if args.entrypoint else None, ' '.join(args.cmd) if args.cmd else None, args.output, args.user, args.workdir, args.name, args.env)
+        build_image(args.crane, args.base, args.tars, args.entrypoint, args.cmd, args.output, args.user, args.workdir, args.name, args.env)
     except subprocess.CalledProcessError as e:
         eprint(f"Error: {e}")
     finally:
