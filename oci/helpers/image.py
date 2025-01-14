@@ -87,7 +87,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Build OCI image using Crane")
     parser.add_argument("--crane", required=True, help="Path to the crane binary")
     parser.add_argument("--base", required=True, help="Base OCI image")
-    parser.add_argument("--tars", nargs='+', required=True, help="Paths to tar files representing layers")
+    parser.add_argument("--tars", nargs='+', required=False, help="Paths to tar files representing layers", default=[])
     parser.add_argument("--env", action="append", required=False, help="Environment variables")
     parser.add_argument("--entrypoint", help="Entrypoint for the OCI image")
     parser.add_argument("--cmd", help="Command for the OCI image")
