@@ -4,6 +4,7 @@ import subprocess
 import sys
 import json
 import tempfile
+import shutil
 
 REGISTRY_PORT = 61978
 
@@ -108,4 +109,6 @@ if __name__ == "__main__":
     finally:
         if registry_process:
             stop_registry(registry_process)
-            eprint(log_file.read())
+            log_file.seek(0)
+            shutil.copyfileobj(log_file, sys.stderr.buffer)
+        log_file.close()
