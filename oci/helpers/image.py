@@ -14,7 +14,7 @@ def eprint(*args, **kwargs):
 def start_registry(crane_path: str, log_file: BufferedRandom):
     """Starts a local crane registry and logs its output."""
     log = log_file
-    registry_process = subprocess.Popen([crane_path, "registry", "serve", "--address", ":{}".format(REGISTRY_PORT)], stdout=log, stderr=log)
+    registry_process = subprocess.Popen([crane_path, "fregistry", "serve", "--address", ":{}".format(REGISTRY_PORT)], stdout=log, stderr=log)
     return registry_process
 
 def stop_registry(registry_process):
