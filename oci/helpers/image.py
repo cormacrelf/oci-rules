@@ -5,28 +5,85 @@ import sys
 import json
 import tempfile
 import shutil
-
-REGISTRY_PORT = 61978
+import threading
+import re
+import queue
+from typing import IO
 
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
-def start_registry(crane_path: str, log_file: BufferedRandom):
-    """Starts a local crane registry and logs its output."""
-    log = log_file
-    registry_process = subprocess.Popen([crane_path, "registry", "serve", "--address", ":{}".format(REGISTRY_PORT)], stdout=log, stderr=log)
-    return registry_process
+class Registry:
+    registry_process: subprocess.Popen[bytes]
+    log_thread: threading.Thread
+    port: int
 
-def stop_registry(registry_process):
-    """Stops the local crane registry."""
-    registry_process.terminate()
-    registry_process.wait()
+    def __init__(self, crane_path: str, log_file: BufferedRandom):
+        """Starts a local crane registry and logs its output."""
+        self.registry_process = subprocess.Popen(
+            [
+                crane_path,
+                "registry",
+                "serve",
+                # Use localhost to prevent binding to all interfaces by default (insecure)
+                # Use port 0 to let the OS pick an available port
+                "--address",
+                "localhost:0",
+            ],
+            stderr=subprocess.PIPE,
+            text=False,
+        )
+        if not self.registry_process.stderr:
+            raise Exception("Failed to start registry server, no stderr")
 
-def build_image(crane_path, base_image_path, tar_files, entrypoint, cmd, output, user, workdir, name, envs):
+        def log_reader(
+            stderr: IO[bytes],
+            log_file: BufferedRandom,
+            port_queue: queue.SimpleQueue[int],
+        ):
+            # e.g.
+            # 2025/01/25 00:00:00 serving on port 54011
+            port_pattern = re.compile(r"serving on port (\d+)")
+            port = -1
+            while True:
+                line = stderr.readline(1000)
+                log_file.write(line)
+                log_file.flush()
+                line_str = line.decode("utf-8")
+                match = port_pattern.search(line_str)
+                if match:
+                    port = int(match.group(1))
+                    port_queue.put(port)
+                    break
+            shutil.copyfileobj(stderr, log_file)
+            # if we exited the loop without a port, that means it failed to start
+            if port == -1:
+                port_queue.put(-1)
+
+        port_queue: queue.SimpleQueue[int] = queue.SimpleQueue()
+        self.log_thread = threading.Thread(
+            target=log_reader, args=(self.registry_process.stderr, log_file, port_queue)
+        )
+        self.log_thread.start()
+
+        # Block waiting for the port to be read
+        self.port = port_queue.get()
+        if self.port == -1:
+            raise Exception(
+                "Failed to start registry server, it exited without announcing a port number"
+            )
+
+    def stop(self):
+        """Stops the local crane registry."""
+        self.registry_process.terminate()
+        self.registry_process.wait()
+        self.log_thread.join()
+
+def build_image(crane_path, registry_port, base_image_path, tar_files, entrypoint, cmd, output, user, workdir, name, envs):
     # get last part of base_image path
     base_image = base_image_path.split("/")[-1]
-    registry_base_image = f"localhost:{REGISTRY_PORT}/{base_image}"
-    registry_image = f"localhost:{REGISTRY_PORT}/{name}"
+    registry_base_image = f"localhost:{registry_port}/{base_image}"
+    registry_image = f"localhost:{registry_port}/{name}"
 
     # Push the base image to the local registry
     push_base_image_command = [crane_path, 'push', base_image_path, registry_base_image]
@@ -99,16 +156,18 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     log_file = tempfile.TemporaryFile()
-    registry_process = None
+    registry = None
 
     try:
-        registry_process = start_registry(args.crane, log_file)
-        build_image(args.crane, args.base, args.tars, args.entrypoint, args.cmd, args.output, args.user, args.workdir, args.name, args.env)
+        registry = Registry(args.crane, log_file)
+        build_image(args.crane, registry.port, args.base, args.tars, args.entrypoint, args.cmd, args.output, args.user, args.workdir, args.name, args.env)
     except subprocess.CalledProcessError as e:
         eprint(f"Error: {e}")
+    except Exception as e:
+        eprint(f"Error: {e}")
     finally:
-        if registry_process:
-            stop_registry(registry_process)
+        if registry:
+            registry.stop()
             log_file.seek(0)
             shutil.copyfileobj(log_file, sys.stderr.buffer)
         log_file.close()
